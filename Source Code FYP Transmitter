@@ -1,0 +1,76 @@
+const int outputPin = 7;// The pin to send the binary sequence 
+const int startSignal[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 1, 0, 1, 0, 1, 0, 1, 0}; // Start signal 
+const int endSignal[] = {0, 1, 0, 1, 0, 1, 0, 1, 0,}; // End signal 
+//const int endSignal[] = {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0}; // End signal
+
+
+void setup() {
+  // Initialize the serial communication for debugging purposes
+  Serial.begin(9600);
+
+    // Set the output pin mode
+  pinMode(outputPin, OUTPUT);
+
+  // Prompt the user to enter a message
+  Serial.println("Enter your message: ");
+}
+
+void loop() {
+  // Wait for user input for the message
+  while (Serial.available() == 0) {
+    // Do nothing, just wait for user input
+  }
+
+     // Read the entire message from serial input
+  String message = Serial.readStringUntil('\n');
+  Serial.println("Message to be sent: " + message);
+     // Prompt the user to start transmission
+  Serial.println("Press 'y' to start transmission...");
+     // Wait for user input 'y'
+  while (Serial.available() == 0) {
+    // Do nothing, just wait for user input
+  }
+
+    // Read the user input
+  char userInput = Serial.read();
+     // Check if the user input is 'y'
+  if (userInput == 'y') {
+    // Merge start signal, message, and end signal into one sequence
+    sendSignal(startSignal, sizeof(startSignal) / sizeof(int));
+         // Send each character of the message as a binary sequence
+    for (int i = 0; i < message.length()+1; i++) {
+      char c = message.charAt(i);
+      sendCharAsBinary(c);
+      delay(0); // 0 second delay between each bit for testing
+    }
+
+        sendSignal(endSignal, sizeof(endSignal) / sizeof(int));
+         // Wait for a while before allowing the next transmission
+    Serial.println("Transmission completed. Enter your next message and press 'y' to start again...");
+  }
+}
+
+void sendSignal(const int signal[], int length) {
+  for (int i = 0; i < length; i++) {
+    digitalWrite(outputPin, signal[i]);
+    delay(45); // Delay between each bit transmission (adjust as needed)
+  } 
+}
+
+void sendCharAsBinary(char c) {
+  // Get the ASCII value of the character
+  int asciiValue = int(c);
+     // Convert the ASCII value to an 8-bit binary string
+  for (int i = 7; i >= 0; i--) {
+    if (asciiValue & (1 << i)) {
+      digitalWrite(outputPin, HIGH);
+      Serial.print("1"); // Debugging output
+    } else {
+      digitalWrite(outputPin, LOW);
+      Serial.print("0");
+// Debugging output
+    }
+    delay(45); // Delay between each bit transmission (adjust as needed)
+  }
+  Serial.print(" "); // Separate each character's binary code with a space for debugging
+} 

@@ -1,0 +1,116 @@
+import socket
+import firebase_admin
+from firebase_admin import credentials, db
+from datetime import datetime
+import pytz  # For timezone handling
+import time  # For calculating delay
+import csv
+import os
+
+#Firebase Key Path
+FIREBASE_KEY_PATH = "C:/Users/idrake/Desktop/LiFi Starlink Receiver/serviceAccountKey.json"
+
+#Initialize Firebase
+if not firebase_admin._apps:
+    cred = credentials.Certificate(FIREBASE_KEY_PATH)
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': 'https://lifi-starlink-default-rtdb.asia-southeast1.firebasedatabase.app/'
+    })
+
+#Firebase Database Reference
+ref = db.reference('/')
+
+#Malaysia Timezone
+timezone = pytz.timezone("Asia/Kuala_Lumpur")
+
+#Server Configuration
+HOST = "0.0.0.0"  # Accept connections from any device
+PORT = 5005       # TCP Port
+
+def start_server():
+    """Starts the TCP server and listens for LiFi data."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind((HOST, PORT))
+        server_socket.listen()
+        print(f"Server listening on {HOST}:{PORT}")
+
+        while True:
+            conn, addr = server_socket.accept()
+            with conn:
+                print(f"\nConnected by {addr}")
+                try:
+                    data = conn.recv(1024)  #Receive up to 1024 bytes
+                    if not data:
+                        print("No data received. Skipping...")
+                        continue
+
+                    #Decode and split message: expected format "message|pi_receive_time"
+                    message_raw = data.decode('utf-8').strip()
+                    #print(f"Raw message: {message_raw}")
+
+                    if '|' not in message_raw:
+                        print("Invalid format: missing '|' separator. Skipping...")
+                        continue
+
+                    #Extract message and Pi's timestamp
+                    msg_text, pi_time_str = message_raw.split("|", 1)
+                    msg_text = msg_text.strip()
+                    pi_receive_time = float(pi_time_str.strip())
+
+                    #Current server receive time (as float and formatted string)
+                    firebase_push_time = time.time()
+                    transmission_delay = -(firebase_push_time - pi_receive_time) *1000
+                    timestamp_str = datetime.now(timezone).strftime("%Y-%m-%d %H:%M:%S")
+
+                    #Send data to Firebase
+                    ref.child(timestamp_str).set({
+                        "Message": msg_text,
+                        #"pi_receive_time": pi_receive_time,
+                        #"firebase_push_time": firebase_push_time,
+                        #"Transmission Delay": f"{round(transmission_delay, 3)} ms",
+                        "Received Time": timestamp_str
+                    })
+
+                    #Print confirmation
+                    print(f"\nMessage: {msg_text}")
+                    print(f"Received at: {timestamp_str}")
+                    print(f"Delay from Receiver to Database: {transmission_delay:.3f} ms")
+                    print("Data successfully sent to Firebase!\n")
+
+                    log_to_csv(timestamp_str, msg_text, pi_receive_time, firebase_push_time, transmission_delay)
+
+
+                except Exception as e:
+                    print(f"Error receiving/sending data: {e}")
+
+def log_to_csv(timestamp, message, pi_time, firebase_time, delay_ms):
+    log_filename = "C:/Users/idrake/Desktop/LiFi Starlink Receiver/Database Transmission Delay.csv"
+
+
+    # Create file and write headers if not exist
+    if not os.path.exists(log_filename):
+        with open(log_filename, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([
+                "Timestamp",
+                "Message",
+                "Pi Receive Time (s)",
+                "Firebase Push Time (s)",
+                "Transmission Delay (ms)"
+            ])
+
+    # Append the data row with formatted float precision
+    with open(log_filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([
+            timestamp,
+            message,
+            f"{pi_time:.6f}",
+            f"{firebase_time:.6f}",
+            f"{delay_ms:.2f}"
+        ])
+
+
+if __name__ == "__main__":
+    start_server()
